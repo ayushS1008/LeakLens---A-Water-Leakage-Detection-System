@@ -1,0 +1,55 @@
+{
+  "test_start": "2021-05-26 20:00:00+00:00",
+  "test_end": "2021-06-24 11:45:00+00:00",
+  "fixed_anomaly_threshold": 0.5914460722855819,
+  "original_ml_alert_episodes": 2,
+  "original_rule_alert_episodes": 16,
+  "scenarios": [
+    {
+      "rate_lpm": 0.25,
+      "start_hour": 1,
+      "leak_start": "2021-05-28 23:00:00+00:00",
+      "added_litres": 60.0,
+      "ml_new_alert": true,
+      "ml_delay_minutes": 105.0,
+      "rule_new_alert": true,
+      "rule_delay_minutes": 60.0
+    },
+    {
+      "rate_lpm": 0.5,
+      "start_hour": 1,
+      "leak_start": "2021-05-28 23:00:00+00:00",
+      "added_litres": 120.0,
+      "ml_new_alert": true,
+      "ml_delay_minutes": 105.0,
+      "rule_new_alert": true,
+      "rule_delay_minutes": 60.0
+    },
+    {
+      "rate_lpm": 1.0,
+      "start_hour": 12,
+      "leak_start": "2021-05-29 10:00:00+00:00",
+      "added_litres": 240.0,
+      "ml_new_alert": true,
+      "ml_delay_minutes": 75.0,
+      "rule_new_alert": true,
+      "rule_delay_minutes": 30.0
+    },
+    {
+      "rate_lpm": 2.0,
+      "start_hour": 12,
+      "leak_start": "2021-05-29 10:00:00+00:00",
+      "added_litres": 480.0,
+      "ml_new_alert": true,
+      "ml_delay_minutes": 75.0,
+      "rule_new_alert": true,
+      "rule_delay_minutes": 30.0
+    }
+  ],
+  "limitations": [
+    "Original readings have no verified leak labels.",
+    "Injected leaks are constant-rate artificial scenarios.",
+    "Four scenarios across two selected windows are a limited evaluation.",
+    "Background alerts are not confirmed false alarms."
+  ]
+}

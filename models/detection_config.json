@@ -1,0 +1,21 @@
+{
+  "feature_columns": [
+    "litres_used",
+    "previous_litres",
+    "mean_last_hour",
+    "minimum_last_hour",
+    "hour_sin",
+    "hour_cos",
+    "weekday_sin",
+    "weekday_cos"
+  ],
+  "anomaly_threshold": 0.5914460722855819,
+  "threshold_method": "98th percentile of validation anomaly scores",
+  "timezone": "Europe/Berlin",
+  "interval_minutes": 15,
+  "sklearn_version": "1.9.1",
+  "training_rows": 12720,
+  "validation_rows": 2753,
+  "random_state": 42,
+  "initial_anomaly_threshold": 0.629538242568517
+}

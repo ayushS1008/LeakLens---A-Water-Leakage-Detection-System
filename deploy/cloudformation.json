@@ -1,0 +1,407 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "LeakLens hackathon demo: EC2 app, private S3 analyses, DynamoDB maintenance tickets.",
+  "Parameters": {
+    "ArtifactBucket": {
+      "Type": "String"
+    },
+    "AllowedHttpCidr": {
+      "Type": "String",
+      "Default": "0.0.0.0/0",
+      "Description": "Who can open the demo on port 80; use your IP/32 to restrict access."
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "t3.micro",
+      "AllowedValues": [
+        "t3.micro",
+        "t3.small",
+        "t3.medium"
+      ]
+    },
+    "UbuntuAmi": {
+      "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+      "Default": "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
+    },
+    "EmailSender": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^$|^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$",
+      "Description": "Optional verified SES email address; configure both to enable email setup."
+    },
+    "EmailRecipient": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^$|^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$",
+      "Description": "Optional verified SES email address; configure both to enable email setup."
+    }
+  },
+  "Resources": {
+    "Vpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.40.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}"
+            }
+          }
+        ]
+      }
+    },
+    "Gateway": {
+      "Type": "AWS::EC2::InternetGateway"
+    },
+    "GatewayAttachment": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "InternetGatewayId": {
+          "Ref": "Gateway"
+        }
+      }
+    },
+    "Subnet": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.40.1.0/24",
+        "MapPublicIpOnLaunch": true
+      }
+    },
+    "RouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        }
+      }
+    },
+    "DefaultRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "GatewayAttachment",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "RouteTable"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "Gateway"
+        }
+      }
+    },
+    "SubnetRoute": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "RouteTable"
+        },
+        "SubnetId": {
+          "Ref": "Subnet"
+        }
+      }
+    },
+    "WebSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "LeakLens HTTP demo",
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIp": {
+              "Ref": "AllowedHttpCidr"
+            }
+          }
+        ]
+      }
+    },
+    "DataBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "IgnorePublicAcls": true,
+          "BlockPublicPolicy": true,
+          "RestrictPublicBuckets": true
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "ExpireDemoAnalyses",
+              "Status": "Enabled",
+              "ExpirationInDays": 30,
+              "Prefix": "analyses/"
+            }
+          ]
+        }
+      }
+    },
+    "RecordsTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "pk",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "pk",
+            "KeyType": "HASH"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": true
+        }
+      }
+    },
+    "InstanceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ec2.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+          }
+        ],
+        "Policies": [
+          {
+            "PolicyName": "LeakLensStorage",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::${ArtifactBucket}/leaklens-deploy.zip"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Sub": "${DataBucket.Arn}/analyses/*"
+                    },
+                    {
+                      "Fn::Sub": "${DataBucket.Arn}/models/*"
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:Scan"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "RecordsTable",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Fn::If": [
+                    "EmailConfigured",
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "ses:SendEmail"
+                      ],
+                      "Resource": {
+                        "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${EmailSender}"
+                      },
+                      "Condition": {
+                        "StringEquals": {
+                          "ses:FromAddress": {
+                            "Ref": "EmailSender"
+                          }
+                        },
+                        "ForAllValues:StringEquals": {
+                          "ses:Recipients": [
+                            {
+                              "Ref": "EmailRecipient"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "Ref": "AWS::NoValue"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "InstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Roles": [
+          {
+            "Ref": "InstanceRole"
+          }
+        ]
+      }
+    },
+    "ApplicationInstance": {
+      "Type": "AWS::EC2::Instance",
+      "DependsOn": [
+        "DefaultRoute",
+        "SubnetRoute"
+      ],
+      "Properties": {
+        "ImageId": {
+          "Ref": "UbuntuAmi"
+        },
+        "InstanceType": {
+          "Ref": "InstanceType"
+        },
+        "IamInstanceProfile": {
+          "Ref": "InstanceProfile"
+        },
+        "SubnetId": {
+          "Ref": "Subnet"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "WebSecurityGroup"
+          }
+        ],
+        "MetadataOptions": {
+          "HttpTokens": "required"
+        },
+        "BlockDeviceMappings": [
+          {
+            "DeviceName": "/dev/sda1",
+            "Ebs": {
+              "VolumeSize": 12,
+              "VolumeType": "gp3",
+              "Encrypted": true,
+              "DeleteOnTermination": true
+            }
+          }
+        ],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Sub": "#!/bin/bash\nset -euo pipefail\nexport DEBIAN_FRONTEND=noninteractive\napt-get update\napt-get install -y python3-venv python3-pip nginx\nmkdir -p /opt/leaklens\npython3 -m venv /opt/leaklens/.venv\n/opt/leaklens/.venv/bin/pip install boto3\n/opt/leaklens/.venv/bin/python - <<'DOWNLOAD'\nimport boto3,io,zipfile\ns3=boto3.client('s3',region_name='${AWS::Region}')\narchive=s3.get_object(Bucket='${ArtifactBucket}',Key='leaklens-deploy.zip')['Body'].read()\nwith zipfile.ZipFile(io.BytesIO(archive)) as package:\n    package.extractall('/opt/leaklens')\nDOWNLOAD\n/opt/leaklens/.venv/bin/pip install --only-binary=:all: -r /opt/leaklens/requirements-runtime.txt\nchown -R ubuntu:ubuntu /opt/leaklens\ncat > /etc/systemd/system/leaklens.service <<'SERVICE'\n[Unit]\nDescription=LeakLens API\nAfter=network-online.target\nWants=network-online.target\n[Service]\nUser=ubuntu\nWorkingDirectory=/opt/leaklens\nEnvironment=LEAKLENS_STORAGE=aws\nEnvironment=AWS_REGION=${AWS::Region}\nEnvironment=LEAKLENS_BUCKET=${DataBucket}\nEnvironment=LEAKLENS_TABLE=${RecordsTable}\nEnvironment=\"LEAKLENS_EMAIL_FROM=${EmailSender}\"\nEnvironment=\"LEAKLENS_EMAIL_TO=${EmailRecipient}\"\nExecStart=/opt/leaklens/.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1\nRestart=on-failure\nRestartSec=5\n[Install]\nWantedBy=multi-user.target\nSERVICE\ncat > /etc/nginx/sites-available/default <<'NGINX'\nserver {\n    listen 80 default_server;\n    server_name _;\n    client_max_body_size 10m;\n    root /opt/leaklens/frontend/dist;\n    index index.html;\n    location /api/ {\n        proxy_pass http://127.0.0.1:8000;\n        proxy_set_header Host $host;\n        proxy_read_timeout 120s;\n    }\n    location /docs { proxy_pass http://127.0.0.1:8000; }\n    location /openapi.json { proxy_pass http://127.0.0.1:8000; }\n    location / { try_files $uri $uri/ =404; }\n}\nNGINX\nsystemctl daemon-reload\nsystemctl enable --now leaklens\nnginx -t\nsystemctl restart nginx\n"
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "AppUrl": {
+      "Value": {
+        "Fn::Sub": "http://${ApplicationInstance.PublicIp}"
+      }
+    },
+    "InstanceId": {
+      "Value": {
+        "Ref": "ApplicationInstance"
+      }
+    },
+    "DataBucket": {
+      "Value": {
+        "Ref": "DataBucket"
+      }
+    },
+    "TicketsTable": {
+      "Value": {
+        "Ref": "RecordsTable"
+      }
+    }
+  },
+  "Conditions": {
+    "EmailConfigured": {
+      "Fn::And": [
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "EmailSender"
+                },
+                ""
+              ]
+            }
+          ]
+        },
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "EmailRecipient"
+                },
+                ""
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

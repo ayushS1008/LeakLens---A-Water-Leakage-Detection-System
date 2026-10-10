@@ -1,0 +1,5 @@
+rate_lpm,start_hour,leak_start,added_litres,ml_new_alert,ml_delay_minutes,rule_new_alert,rule_delay_minutes
+0.25,1,2021-05-28 23:00:00+00:00,60.0,True,105.0,True,60.0
+0.5,1,2021-05-28 23:00:00+00:00,120.0,True,105.0,True,60.0
+1.0,12,2021-05-29 10:00:00+00:00,240.0,True,75.0,True,30.0
+2.0,12,2021-05-29 10:00:00+00:00,480.0,True,75.0,True,30.0

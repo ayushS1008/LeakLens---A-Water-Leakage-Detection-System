@@ -1,0 +1,11 @@
+{
+  "synthetic_demo": true,
+  "description": "A constant 1 L/min leak is added to 24 hours of real household data, then removed to represent a repair. This is an illustrative scenario, not a verified real repair.",
+  "repair_time_utc": "2021-05-29T01:00:00+00:00",
+  "repair_time_for_dashboard": "2021-05-29T01:00",
+  "before_csv": "leak_before_repair.csv",
+  "followup_csv": "followup_after_repair.csv",
+  "model_settings_changed": false,
+  "data_source": "https://doi.org/10.5281/zenodo.7506076",
+  "data_license": "CC BY 4.0"
+}
